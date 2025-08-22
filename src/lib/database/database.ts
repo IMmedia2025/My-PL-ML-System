@@ -277,8 +277,6 @@ export class FPLDatabase {
     })
   }
 
-  // NEW METHODS FOR API ENDPOINTS
-
   async getTrainingHistory(limit: number = 10): Promise<any[]> {
     return new Promise((resolve, reject) => {
       this.db.all(`
@@ -353,6 +351,26 @@ export class FPLDatabase {
       `, [limit], (err, rows) => {
         if (err) {
           console.error('Error getting upcoming fixtures:', err)
+          resolve([]) // Return empty array on error
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  // ADD THIS MISSING METHOD
+  async getFinishedMatches(): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(`
+        SELECT * FROM fixtures 
+        WHERE finished = 1 
+          AND team_h_score IS NOT NULL 
+          AND team_a_score IS NOT NULL
+        ORDER BY event ASC
+      `, (err, rows) => {
+        if (err) {
+          console.error('Error getting finished matches:', err)
           resolve([]) // Return empty array on error
         } else {
           resolve(rows || [])
