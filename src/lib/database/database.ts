@@ -1,164 +1,376 @@
 import sqlite3 from 'sqlite3'
-import { promisify } from 'util'
-import fs from 'fs'
 import path from 'path'
+import fs from 'fs'
 
 export class FPLDatabase {
   private db: sqlite3.Database
-  private initialized = false
+  private dbPath: string
 
-  constructor(dbPath: string = './data/fpl_database.db') {
-    // Ensure data directory exists
-    const dataDir = path.dirname(dbPath)
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true })
+  constructor(dbPath: string = './data/premier_league.db') {
+    this.dbPath = dbPath
+    
+    // Ensure directory exists
+    const dir = path.dirname(dbPath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
     }
 
-    this.db = new sqlite3.Database(dbPath)
+    this.db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error('Error opening database:', err.message)
+      } else {
+        console.log('Connected to SQLite database')
+      }
+    })
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) return
+    return new Promise((resolve, reject) => {
+      // Create tables
+      const tables = [
+        // Teams table
+        `CREATE TABLE IF NOT EXISTS teams (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          short_name TEXT,
+          code INTEGER,
+          strength INTEGER,
+          strength_overall_home INTEGER,
+          strength_overall_away INTEGER,
+          strength_attack_home INTEGER,
+          strength_attack_away INTEGER,
+          strength_defence_home INTEGER,
+          strength_defence_away INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
 
-    const schemaPath = path.join(process.cwd(), 'src/lib/database/schema.sql')
-    const schema = fs.readFileSync(schemaPath, 'utf8')
-    
-    const run = promisify(this.db.run.bind(this.db))
-    await run(schema)
-    
-    this.initialized = true
-    console.log('Database initialized successfully')
+        // Players table
+        `CREATE TABLE IF NOT EXISTS players (
+          id INTEGER PRIMARY KEY,
+          first_name TEXT,
+          second_name TEXT,
+          web_name TEXT,
+          team_id INTEGER,
+          element_type INTEGER,
+          now_cost INTEGER,
+          total_points INTEGER,
+          points_per_game REAL,
+          form REAL,
+          selected_by_percent REAL,
+          transfers_in INTEGER,
+          transfers_out INTEGER,
+          value_form REAL,
+          value_season REAL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (team_id) REFERENCES teams (id)
+        )`,
+
+        // Fixtures table
+        `CREATE TABLE IF NOT EXISTS fixtures (
+          id INTEGER PRIMARY KEY,
+          event INTEGER,
+          team_h INTEGER,
+          team_a INTEGER,
+          team_h_score INTEGER,
+          team_a_score INTEGER,
+          finished BOOLEAN DEFAULT 0,
+          kickoff_time TEXT,
+          difficulty_h INTEGER,
+          difficulty_a INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (team_h) REFERENCES teams (id),
+          FOREIGN KEY (team_a) REFERENCES teams (id)
+        )`,
+
+        // Predictions table
+        `CREATE TABLE IF NOT EXISTS predictions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fixture_id INTEGER,
+          home_team_id INTEGER,
+          away_team_id INTEGER,
+          home_team_name TEXT,
+          away_team_name TEXT,
+          predicted_outcome TEXT,
+          confidence REAL,
+          home_win_prob REAL,
+          draw_prob REAL,
+          away_win_prob REAL,
+          gameweek INTEGER,
+          kickoff_time TEXT,
+          model_version TEXT,
+          features_used TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (fixture_id) REFERENCES fixtures (id),
+          FOREIGN KEY (home_team_id) REFERENCES teams (id),
+          FOREIGN KEY (away_team_id) REFERENCES teams (id)
+        )`,
+
+        // Training history table
+        `CREATE TABLE IF NOT EXISTS training_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          model_version TEXT,
+          training_samples INTEGER,
+          accuracy REAL,
+          loss REAL,
+          val_accuracy REAL,
+          val_loss REAL,
+          training_duration INTEGER,
+          features_used TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`
+      ]
+
+      let completed = 0
+      const total = tables.length
+
+      tables.forEach((sql) => {
+        this.db.run(sql, (err) => {
+          if (err) {
+            console.error('Error creating table:', err.message)
+            reject(err)
+          } else {
+            completed++
+            if (completed === total) {
+              console.log('Database initialized successfully')
+              resolve()
+            }
+          }
+        })
+      })
+    })
   }
 
   async insertTeams(teams: any[]): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db))
-    
-    for (const team of teams) {
-      await run(`
+    return new Promise((resolve, reject) => {
+      const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO teams (
-          id, name, short_name, strength, strength_overall_home, strength_overall_away,
-          strength_attack_home, strength_attack_away, strength_defence_home, strength_defence_away
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        team.id, team.name, team.short_name, team.strength,
-        team.strength_overall_home, team.strength_overall_away,
-        team.strength_attack_home, team.strength_attack_away,
-        team.strength_defence_home, team.strength_defence_away
-      ])
-    }
+          id, name, short_name, code, strength,
+          strength_overall_home, strength_overall_away,
+          strength_attack_home, strength_attack_away,
+          strength_defence_home, strength_defence_away
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      let completed = 0
+      teams.forEach((team) => {
+        stmt.run([
+          team.id, team.name, team.short_name, team.code, team.strength,
+          team.strength_overall_home, team.strength_overall_away,
+          team.strength_attack_home, team.strength_attack_away,
+          team.strength_defence_home, team.strength_defence_away
+        ], (err) => {
+          if (err) {
+            console.error('Error inserting team:', err.message)
+          }
+          completed++
+          if (completed === teams.length) {
+            stmt.finalize()
+            console.log(`Inserted ${teams.length} teams`)
+            resolve()
+          }
+        })
+      })
+    })
   }
 
   async insertPlayers(players: any[]): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db))
-    
-    for (const player of players) {
-      await run(`
+    return new Promise((resolve, reject) => {
+      const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO players (
-          id, web_name, team_id, element_type, now_cost, total_points, points_per_game,
-          selected_by_percent, form, transfers_in, transfers_out, value_form, value_season,
-          minutes, goals_scored, assists, clean_sheets, goals_conceded, own_goals,
-          penalties_saved, penalties_missed, yellow_cards, red_cards, saves, bonus, bps,
-          influence, creativity, threat, ict_index, starts, expected_goals, expected_assists,
-          expected_goal_involvements, expected_goals_conceded
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        player.id, player.web_name, player.team, player.element_type, player.now_cost,
-        player.total_points, player.points_per_game, player.selected_by_percent, player.form,
-        player.transfers_in, player.transfers_out, player.value_form, player.value_season,
-        player.minutes, player.goals_scored, player.assists, player.clean_sheets,
-        player.goals_conceded, player.own_goals, player.penalties_saved, player.penalties_missed,
-        player.yellow_cards, player.red_cards, player.saves, player.bonus, player.bps,
-        player.influence, player.creativity, player.threat, player.ict_index, player.starts,
-        player.expected_goals, player.expected_assists, player.expected_goal_involvements,
-        player.expected_goals_conceded
-      ])
-    }
+          id, first_name, second_name, web_name, team_id, element_type,
+          now_cost, total_points, points_per_game, form, selected_by_percent,
+          transfers_in, transfers_out, value_form, value_season
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      let completed = 0
+      players.forEach((player) => {
+        stmt.run([
+          player.id, player.first_name, player.second_name, player.web_name,
+          player.team, player.element_type, player.now_cost, player.total_points,
+          player.points_per_game, player.form, player.selected_by_percent,
+          player.transfers_in, player.transfers_out, player.value_form, player.value_season
+        ], (err) => {
+          if (err) {
+            console.error('Error inserting player:', err.message)
+          }
+          completed++
+          if (completed === players.length) {
+            stmt.finalize()
+            console.log(`Inserted ${players.length} players`)
+            resolve()
+          }
+        })
+      })
+    })
   }
 
   async insertFixtures(fixtures: any[]): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db))
-    
-    for (const fixture of fixtures) {
-      await run(`
+    return new Promise((resolve, reject) => {
+      const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO fixtures (
-          id, event, team_h, team_a, team_h_score, team_a_score, finished,
-          finished_provisional, kickoff_time, difficulty_h, difficulty_a, pulse_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        fixture.id, fixture.event, fixture.team_h, fixture.team_a,
-        fixture.team_h_score, fixture.team_a_score, fixture.finished,
-        fixture.finished_provisional, fixture.kickoff_time,
-        fixture.team_h_difficulty, fixture.team_a_difficulty, fixture.pulse_id
-      ])
-    }
-  }
+          id, event, team_h, team_a, team_h_score, team_a_score,
+          finished, kickoff_time, difficulty_h, difficulty_a
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
 
-  async getFinishedMatches(): Promise<any[]> {
-    const all = promisify(this.db.all.bind(this.db))
-    
-    return await all(`
-      SELECT f.*, 
-             th.name as home_team_name, th.short_name as home_team_short,
-             ta.name as away_team_name, ta.short_name as away_team_short
-      FROM fixtures f
-      JOIN teams th ON f.team_h = th.id
-      JOIN teams ta ON f.team_a = ta.id
-      WHERE f.finished = 1 AND f.team_h_score IS NOT NULL AND f.team_a_score IS NOT NULL
-      ORDER BY f.event, f.id
-    `)
-  }
-
-  async getUpcomingFixtures(limit: number = 50): Promise<any[]> {
-    const all = promisify(this.db.all.bind(this.db))
-    
-    return await all(`
-      SELECT f.*, 
-             th.name as home_team_name, th.short_name as home_team_short,
-             ta.name as away_team_name, ta.short_name as away_team_short
-      FROM fixtures f
-      JOIN teams th ON f.team_h = th.id
-      JOIN teams ta ON f.team_a = ta.id
-      WHERE f.finished = 0
-      ORDER BY f.kickoff_time
-      LIMIT ?
-    `, [limit])
+      let completed = 0
+      fixtures.forEach((fixture) => {
+        stmt.run([
+          fixture.id, fixture.event, fixture.team_h, fixture.team_a,
+          fixture.team_h_score, fixture.team_a_score, fixture.finished,
+          fixture.kickoff_time, fixture.team_h_difficulty, fixture.team_a_difficulty
+        ], (err) => {
+          if (err) {
+            console.error('Error inserting fixture:', err.message)
+          }
+          completed++
+          if (completed === fixtures.length) {
+            stmt.finalize()
+            console.log(`Inserted ${fixtures.length} fixtures`)
+            resolve()
+          }
+        })
+      })
+    })
   }
 
   async savePrediction(prediction: any): Promise<void> {
-    const run = promisify(this.db.run.bind(this.db))
-    
-    await run(`
-      INSERT INTO match_predictions (
-        fixture_id, home_team_id, away_team_id, gameweek, home_win_prob, draw_prob, away_win_prob,
-        predicted_outcome, confidence, model_version, features_used
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      prediction.fixture_id, prediction.home_team_id, prediction.away_team_id, prediction.gameweek,
-      prediction.home_win_prob, prediction.draw_prob, prediction.away_win_prob,
-      prediction.predicted_outcome, prediction.confidence, prediction.model_version,
-      JSON.stringify(prediction.features_used)
-    ])
+    return new Promise((resolve, reject) => {
+      this.db.run(`
+        INSERT INTO predictions (
+          fixture_id, home_team_id, away_team_id, home_team_name, away_team_name,
+          predicted_outcome, confidence, home_win_prob, draw_prob, away_win_prob,
+          gameweek, kickoff_time, model_version, features_used
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        prediction.fixture_id, prediction.home_team_id, prediction.away_team_id,
+        prediction.home_team_name, prediction.away_team_name, prediction.predicted_outcome,
+        prediction.confidence, prediction.home_win_prob, prediction.draw_prob,
+        prediction.away_win_prob, prediction.gameweek, prediction.kickoff_time,
+        prediction.model_version, JSON.stringify(prediction.features_used)
+      ], (err) => {
+        if (err) {
+          console.error('Error saving prediction:', err.message)
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    })
   }
 
   async getLatestPredictions(limit: number = 10): Promise<any[]> {
-    const all = promisify(this.db.all.bind(this.db))
-    
-    return await all(`
-      SELECT p.*, 
-             th.name as home_team_name, th.short_name as home_team_short,
-             ta.name as away_team_name, ta.short_name as away_team_short,
-             f.kickoff_time
-      FROM match_predictions p
-      JOIN teams th ON p.home_team_id = th.id
-      JOIN teams ta ON p.away_team_id = ta.id
-      LEFT JOIN fixtures f ON p.fixture_id = f.id
-      ORDER BY p.created_at DESC
-      LIMIT ?
-    `, [limit])
+    return new Promise((resolve, reject) => {
+      this.db.all(`
+        SELECT * FROM predictions 
+        ORDER BY created_at DESC 
+        LIMIT ?
+      `, [limit], (err, rows) => {
+        if (err) {
+          console.error('Error getting latest predictions:', err)
+          resolve([])
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  // NEW METHODS FOR API ENDPOINTS
+
+  async getTrainingHistory(limit: number = 10): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(`
+        SELECT * FROM training_history 
+        ORDER BY created_at DESC 
+        LIMIT ?
+      `, [limit], (err, rows) => {
+        if (err) {
+          console.error('Error getting training history:', err)
+          resolve([]) // Return empty array on error
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  async checkModelExists(): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.db.get(`
+        SELECT COUNT(*) as count FROM training_history 
+        WHERE accuracy > 0
+      `, (err, row: any) => {
+        if (err) {
+          console.error('Error checking model existence:', err)
+          resolve(false)
+        } else {
+          resolve((row?.count || 0) > 0)
+        }
+      })
+    })
+  }
+
+  async getAllFixtures(): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(`
+        SELECT 
+          f.*,
+          h.name as home_team_name,
+          a.name as away_team_name
+        FROM fixtures f
+        LEFT JOIN teams h ON f.team_h = h.id
+        LEFT JOIN teams a ON f.team_a = a.id
+        ORDER BY f.event ASC, f.kickoff_time ASC
+      `, (err, rows) => {
+        if (err) {
+          console.error('Error getting all fixtures:', err)
+          resolve([]) // Return empty array on error
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  async getUpcomingFixtures(limit: number = 20): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      // Get fixtures that haven't finished yet (finished = 0 or NULL)
+      this.db.all(`
+        SELECT 
+          f.*,
+          h.name as home_team_name,
+          a.name as away_team_name
+        FROM fixtures f
+        LEFT JOIN teams h ON f.team_h = h.id
+        LEFT JOIN teams a ON f.team_a = a.id
+        WHERE (f.finished = 0 OR f.finished IS NULL)
+          AND f.team_h IS NOT NULL 
+          AND f.team_a IS NOT NULL
+        ORDER BY f.event ASC, f.kickoff_time ASC
+        LIMIT ?
+      `, [limit], (err, rows) => {
+        if (err) {
+          console.error('Error getting upcoming fixtures:', err)
+          resolve([]) // Return empty array on error
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
   }
 
   async close(): Promise<void> {
-    const close = promisify(this.db.close.bind(this.db))
-    await close()
+    return new Promise((resolve) => {
+      this.db.close((err) => {
+        if (err) {
+          console.error('Error closing database:', err.message)
+        } else {
+          console.log('Database connection closed')
+        }
+        resolve()
+      })
+    })
   }
 }
