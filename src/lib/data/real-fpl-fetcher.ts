@@ -1,8 +1,9 @@
+import axios from 'axios'
 import { FPLDatabase } from '../database/database'
 
 export class RealFPLDataFetcher {
   private baseUrl = 'https://fantasy.premierleague.com/api'
-  private requestDelay = 1000
+  private requestDelay = 1000 // 1 second between requests
   private maxRetries = 3
   private db: FPLDatabase
 
@@ -17,19 +18,15 @@ export class RealFPLDataFetcher {
   private async makeRequest(url: string, retries = 0): Promise<any> {
     try {
       console.log(`Fetching: ${url}`)
-      const response = await fetch(url, {
+      const response = await axios.get(url, {
+        timeout: 30000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       })
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
       await this.delay(this.requestDelay)
-      return data
+      return response.data
     } catch (error) {
       if (retries < this.maxRetries) {
         console.log(`Request failed, retrying... (${retries + 1}/${this.maxRetries})`)
@@ -45,6 +42,7 @@ export class RealFPLDataFetcher {
     
     console.log(`Fetched ${data.teams.length} teams and ${data.elements.length} players`)
     
+    // Store in database
     await this.db.initialize()
     await this.db.insertTeams(data.teams)
     await this.db.insertPlayers(data.elements)
@@ -61,9 +59,21 @@ export class RealFPLDataFetcher {
     const fixtures = await this.makeRequest(`${this.baseUrl}/fixtures/`)
     
     console.log(`Fetched ${fixtures.length} fixtures`)
+    
+    // Store in database
     await this.db.insertFixtures(fixtures)
     
     return fixtures
+  }
+
+  async fetchPlayerHistory(playerId: number): Promise<any> {
+    const playerData = await this.makeRequest(`${this.baseUrl}/element-summary/${playerId}/`)
+    return playerData
+  }
+
+  async fetchGameweekLiveData(gameweek: number): Promise<any> {
+    const liveData = await this.makeRequest(`${this.baseUrl}/event/${gameweek}/live/`)
+    return liveData
   }
 
   async fetchCurrentGameweek(): Promise<number> {
@@ -79,6 +89,7 @@ export class RealFPLDataFetcher {
     try {
       console.log('=== Starting Real FPL Data Fetch ===')
       
+      // Fetch bootstrap data (teams, players, gameweeks)
       try {
         allData.bootstrap = await this.fetchBootstrapData()
       } catch (error) {
@@ -87,6 +98,7 @@ export class RealFPLDataFetcher {
         console.error(msg)
       }
 
+      // Fetch fixtures
       try {
         allData.fixtures = await this.fetchFixtures()
       } catch (error) {
@@ -95,6 +107,7 @@ export class RealFPLDataFetcher {
         console.error(msg)
       }
 
+      // Fetch current gameweek
       try {
         allData.currentGameweek = await this.fetchCurrentGameweek()
       } catch (error) {
@@ -104,6 +117,11 @@ export class RealFPLDataFetcher {
       }
 
       console.log('=== FPL Data Fetch Complete ===')
+      console.log(`Errors: ${errors.length}`)
+      console.log(`Teams: ${allData.bootstrap?.teams?.length || 0}`)
+      console.log(`Players: ${allData.bootstrap?.players?.length || 0}`)
+      console.log(`Fixtures: ${allData.fixtures?.length || 0}`)
+
       return {
         success: errors.length === 0,
         data: allData,
