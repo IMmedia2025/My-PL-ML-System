@@ -38,8 +38,8 @@ export async function GET() {
       systemChecks.fpl_api = response.ok
     } catch (error) {
       console.error('FPL API check failed:', error)
-      // Handle timeout specifically
-      if (error.name === 'AbortError') {
+      // Handle timeout specifically - FIXED: Proper TypeScript error handling
+      if (error instanceof Error && error.name === 'AbortError') {
         console.error('FPL API request timed out after 10 seconds')
       }
     }
