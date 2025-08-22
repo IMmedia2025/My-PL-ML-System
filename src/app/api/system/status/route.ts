@@ -32,9 +32,17 @@ export async function GET() {
 
     // Check FPL API
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      
       const response = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
-        timeout: 10000
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       })
+      
+      clearTimeout(timeoutId)
       systemChecks.fpl_api = response.ok
     } catch (error) {
       console.error('FPL API check failed:', error)
