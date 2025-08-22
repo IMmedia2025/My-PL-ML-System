@@ -1,4 +1,3 @@
-import axios from 'axios'
 import { FPLDatabase } from '../database/database'
 
 export class RealFPLDataFetcher {
@@ -18,15 +17,27 @@ export class RealFPLDataFetcher {
   private async makeRequest(url: string, retries = 0): Promise<any> {
     try {
       console.log(`Fetching: ${url}`)
-      const response = await axios.get(url, {
-        timeout: 30000,
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      
+      const response = await fetch(url, {
+        signal: controller.signal,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       })
       
+      clearTimeout(timeoutId)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
       await this.delay(this.requestDelay)
-      return response.data
+      return data
+      
     } catch (error) {
       if (retries < this.maxRetries) {
         console.log(`Request failed, retrying... (${retries + 1}/${this.maxRetries})`)
