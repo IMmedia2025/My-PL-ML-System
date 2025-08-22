@@ -24,12 +24,27 @@ const nextConfig = {
       };
     }
     
-    // Handle SQLite3 for server-side
+    // Handle native dependencies for Render
     if (isServer) {
       config.externals.push('sqlite3');
     }
     
     return config;
+  },
+  
+  // Optimize for Render deployment
+  output: 'standalone',
+  
+  // Enable image optimization
+  images: {
+    domains: [],
+  },
+  
+  // Performance optimizations
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error']
+    } : false,
   },
 }
 
