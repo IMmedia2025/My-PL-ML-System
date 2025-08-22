@@ -30,18 +30,14 @@ export async function GET() {
       console.error('Model check failed:', error)
     }
 
-    // Check FPL API - FIXED: Using AbortSignal.timeout instead of timeout property
+    // Check FPL API
     try {
       const response = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
-        signal: AbortSignal.timeout(10000) // 10 seconds timeout
+        timeout: 10000
       })
       systemChecks.fpl_api = response.ok
     } catch (error) {
       console.error('FPL API check failed:', error)
-      // Handle timeout specifically - FIXED: Proper TypeScript error handling
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.error('FPL API request timed out after 10 seconds')
-      }
     }
 
     // Check data freshness (predictions from last 24 hours)
