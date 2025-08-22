@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: premier-league-ml-system
+    env: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TF_CPP_MIN_LOG_LEVEL
+        value: "2"
+    autoDeploy: true
