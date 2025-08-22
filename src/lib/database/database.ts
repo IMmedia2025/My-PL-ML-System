@@ -44,7 +44,7 @@ export class FPLDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
 
-        // Players table
+        // Players table with ALL FPL columns
         `CREATE TABLE IF NOT EXISTS players (
           id INTEGER PRIMARY KEY,
           first_name TEXT,
@@ -61,6 +61,28 @@ export class FPLDatabase {
           transfers_out INTEGER,
           value_form REAL,
           value_season REAL,
+          minutes INTEGER DEFAULT 0,
+          goals_scored INTEGER DEFAULT 0,
+          assists INTEGER DEFAULT 0,
+          clean_sheets INTEGER DEFAULT 0,
+          goals_conceded INTEGER DEFAULT 0,
+          own_goals INTEGER DEFAULT 0,
+          penalties_saved INTEGER DEFAULT 0,
+          penalties_missed INTEGER DEFAULT 0,
+          yellow_cards INTEGER DEFAULT 0,
+          red_cards INTEGER DEFAULT 0,
+          saves INTEGER DEFAULT 0,
+          bonus INTEGER DEFAULT 0,
+          bps INTEGER DEFAULT 0,
+          influence REAL DEFAULT 0,
+          creativity REAL DEFAULT 0,
+          threat REAL DEFAULT 0,
+          ict_index REAL DEFAULT 0,
+          starts INTEGER DEFAULT 0,
+          expected_goals REAL DEFAULT 0,
+          expected_assists REAL DEFAULT 0,
+          expected_goal_involvements REAL DEFAULT 0,
+          expected_goals_conceded REAL DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (team_id) REFERENCES teams (id)
         )`,
@@ -179,8 +201,13 @@ export class FPLDatabase {
         INSERT OR REPLACE INTO players (
           id, first_name, second_name, web_name, team_id, element_type,
           now_cost, total_points, points_per_game, form, selected_by_percent,
-          transfers_in, transfers_out, value_form, value_season
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          transfers_in, transfers_out, value_form, value_season,
+          minutes, goals_scored, assists, clean_sheets, goals_conceded,
+          own_goals, penalties_saved, penalties_missed, yellow_cards, red_cards,
+          saves, bonus, bps, influence, creativity, threat, ict_index,
+          starts, expected_goals, expected_assists, expected_goal_involvements,
+          expected_goals_conceded
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       let completed = 0
@@ -189,7 +216,15 @@ export class FPLDatabase {
           player.id, player.first_name, player.second_name, player.web_name,
           player.team, player.element_type, player.now_cost, player.total_points,
           player.points_per_game, player.form, player.selected_by_percent,
-          player.transfers_in, player.transfers_out, player.value_form, player.value_season
+          player.transfers_in, player.transfers_out, player.value_form, player.value_season,
+          player.minutes || 0, player.goals_scored || 0, player.assists || 0,
+          player.clean_sheets || 0, player.goals_conceded || 0, player.own_goals || 0,
+          player.penalties_saved || 0, player.penalties_missed || 0, 
+          player.yellow_cards || 0, player.red_cards || 0, player.saves || 0,
+          player.bonus || 0, player.bps || 0, player.influence || 0,
+          player.creativity || 0, player.threat || 0, player.ict_index || 0,
+          player.starts || 0, player.expected_goals || 0, player.expected_assists || 0,
+          player.expected_goal_involvements || 0, player.expected_goals_conceded || 0
         ], (err) => {
           if (err) {
             console.error('Error inserting player:', err.message)
@@ -359,7 +394,6 @@ export class FPLDatabase {
     })
   }
 
-  // ADD THIS MISSING METHOD
   async getFinishedMatches(): Promise<any[]> {
     return new Promise((resolve, reject) => {
       this.db.all(`
