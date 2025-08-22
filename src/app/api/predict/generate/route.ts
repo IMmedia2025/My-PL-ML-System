@@ -4,14 +4,42 @@ import { ProductionMLModel } from '@/lib/ml/production-model'
 
 export async function POST() {
   try {
-    console.log('Generating real predictions...')
+    console.log('Generating real predictions from FPL data...')
     
     // Initialize data and model
     const fetcher = new RealFPLDataFetcher()
     const db = await fetcher.getDatabase()
     const model = new ProductionMLModel(db)
     
-    // Generate predictions for upcoming matches
+    // Get all upcoming fixtures - check current gameweek and future
+    const allFixtures = await db.getAllFixtures()
+    console.log(`Total fixtures in database: ${allFixtures.length}`)
+    
+    // Filter for current gameweek and upcoming fixtures
+    const upcomingFixtures = allFixtures.filter(fixture => {
+      // Include fixtures that haven't been finished yet
+      return !fixture.finished && fixture.team_h && fixture.team_a
+    })
+    
+    console.log(`Found ${upcomingFixtures.length} upcoming fixtures`)
+    
+    if (upcomingFixtures.length === 0) {
+      console.log('No upcoming fixtures available for prediction')
+      return NextResponse.json({
+        success: true,
+        message: 'No upcoming fixtures available for prediction',
+        predictions: [],
+        metadata: {
+          model_version: '1.0.0',
+          total_predictions: 0,
+          total_fixtures_in_db: allFixtures.length,
+          upcoming_fixtures_found: 0,
+          generated_at: new Date().toISOString()
+        }
+      })
+    }
+    
+    // Generate predictions for real upcoming matches only
     const predictions = await model.predictAllUpcomingMatches()
     
     console.log(`Generated ${predictions.length} real predictions`)
@@ -35,6 +63,7 @@ export async function POST() {
       metadata: {
         model_version: '1.0.0',
         total_predictions: predictions.length,
+        total_fixtures_in_db: allFixtures.length,
         generated_at: new Date().toISOString()
       }
     })
@@ -45,7 +74,52 @@ export async function POST() {
     return NextResponse.json(
       { 
         success: false,
-        error: 'Prediction generation failed', 
+        error: 'Failed to generate predictions', 
+        details: errorMessage,
+        timestamp: new Date().toISOString()
+      },
+      { status: 500 }
+    )
+  }
+}
+
+// GET method - Check prediction status and recent predictions
+export async function GET() {
+  try {
+    console.log('Getting prediction status...')
+    
+    const fetcher = new RealFPLDataFetcher()
+    const db = await fetcher.getDatabase()
+    
+    // Get recent predictions
+    const recentPredictions = await db.getLatestPredictions(10)
+    const upcomingFixtures = await db.getUpcomingFixtures(10)
+    
+    return NextResponse.json({
+      success: true,
+      status: {
+        totalPredictions: recentPredictions.length,
+        upcomingFixtures: upcomingFixtures.length,
+        lastGenerationTime: recentPredictions.length > 0 ? recentPredictions[0].created_at : null,
+        systemReady: true
+      },
+      recentPredictions: recentPredictions.slice(0, 5).map(p => ({
+        homeTeam: p.home_team_name,
+        awayTeam: p.away_team_name,
+        prediction: p.predicted_outcome,
+        confidence: Math.round(p.confidence * 100),
+        gameweek: p.gameweek
+      })),
+      timestamp: new Date().toISOString()
+    })
+
+  } catch (error) {
+    console.error('Prediction status error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+    return NextResponse.json(
+      { 
+        success: false,
+        error: 'Failed to get prediction status', 
         details: errorMessage 
       },
       { status: 500 }
