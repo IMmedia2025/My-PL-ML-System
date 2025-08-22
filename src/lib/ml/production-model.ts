@@ -211,7 +211,7 @@ export class ProductionMLModel {
   }
 
   private async saveTrainingHistory(metrics: any): Promise<void> {
-    const run = promisify => new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       this.db['db'].run(`
         INSERT INTO training_history (
           model_version, training_samples, accuracy, loss, val_accuracy, val_loss,
@@ -222,11 +222,13 @@ export class ProductionMLModel {
         metrics.val_accuracy, metrics.val_loss, 0, 
         JSON.stringify(['team_strength', 'form', 'h2h', 'player_quality'])
       ], function(err) {
-        if (err) reject(err)
-        else resolve(this)
+        if (err) {
+          console.error('Error saving training history:', err)
+          reject(err)
+        } else {
+          resolve()
+        }
       })
     })
-
-    await run
   }
 }
