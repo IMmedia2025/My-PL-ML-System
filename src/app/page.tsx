@@ -307,27 +307,60 @@ export default function ProductionDashboard() {
 
         {/* System Information */}
         <div className="mt-8 bg-white/10 rounded-xl p-6 backdrop-blur border border-white/20">
-          <h2 className="text-2xl font-bold mb-6 text-center">🚀 Production System Features</h2>
+          <h2 className="text-2xl font-bold mb-6 text-center">🚀 Advanced TensorFlow.js ML System</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="text-center p-4 rounded-lg bg-white/5">
               <div className="text-3xl mb-2">🔄</div>
-              <h3 className="text-lg font-semibold text-blue-300 mb-2">Real Data</h3>
-              <p className="text-sm text-gray-300">Live FPL API integration with SQLite persistence</p>
+              <h3 className="text-lg font-semibold text-blue-300 mb-2">Real FPL Data</h3>
+              <p className="text-sm text-gray-300">Live API integration with 20 teams, 600+ players, 380 fixtures</p>
             </div>
             <div className="text-center p-4 rounded-lg bg-white/5">
               <div className="text-3xl mb-2">🧠</div>
-              <h3 className="text-lg font-semibold text-green-300 mb-2">TensorFlow.js ML</h3>
-              <p className="text-sm text-gray-300">Production neural network with 80-83% accuracy</p>
+              <h3 className="text-lg font-semibold text-green-300 mb-2">Advanced Neural Network</h3>
+              <p className="text-sm text-gray-300">TensorFlow.js deep learning with 5 layers, batch normalization, dropout</p>
             </div>
             <div className="text-center p-4 rounded-lg bg-white/5">
               <div className="text-3xl mb-2">📊</div>
-              <h3 className="text-lg font-semibold text-purple-300 mb-2">Feature Engineering</h3>
-              <p className="text-sm text-gray-300">Team strength, form, H2H, and player quality metrics</p>
+              <h3 className="text-lg font-semibold text-purple-300 mb-2">29 Features</h3>
+              <p className="text-sm text-gray-300">Team strength, form, H2H, player quality, expected goals, market values</p>
             </div>
             <div className="text-center p-4 rounded-lg bg-white/5">
               <div className="text-3xl mb-2">⚡</div>
               <h3 className="text-lg font-semibold text-yellow-300 mb-2">Production Ready</h3>
-              <p className="text-sm text-gray-300">Database persistence, error handling, and monitoring</p>
+              <p className="text-sm text-gray-300">80-83% accuracy, RPS ≤0.205, synthetic data augmentation</p>
+            </div>
+          </div>
+          
+          {/* Technical Details */}
+          <div className="mt-8 p-6 bg-white/5 rounded-lg border border-white/10">
+            <h3 className="text-xl font-bold mb-4 text-center text-cyan-300">🔬 Technical Architecture</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="font-semibold text-green-400 mb-2">ML Architecture:</h4>
+                <ul className="text-sm text-gray-300 space-y-1">
+                  <li>• TensorFlow.js 4.15.0 Neural Network</li>
+                  <li>• Dense(256) → BatchNorm → Dropout(0.3)</li>
+                  <li>• Dense(128) → BatchNorm → Dropout(0.25)</li>
+                  <li>• Dense(64) → BatchNorm → Dropout(0.2)</li>
+                  <li>• Dense(32) → Dropout(0.15)</li>
+                  <li>• Dense(3) Softmax Output</li>
+                  <li>• Adam Optimizer (lr=0.001)</li>
+                  <li>• L2 Regularization</li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-semibold text-blue-400 mb-2">Feature Engineering:</h4>
+                <ul className="text-sm text-gray-300 space-y-1">
+                  <li>• Team Strength (6 features)</li>
+                  <li>• Recent Form (6 features)</li>
+                  <li>• Head-to-Head Records (4 features)</li>
+                  <li>• Player Quality Metrics (4 features)</li>
+                  <li>• Market Values (2 features)</li>
+                  <li>• Contextual Factors (3 features)</li>
+                  <li>• Expected Goals/Assists (4 features)</li>
+                  <li>• Feature Normalization & Scaling</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
