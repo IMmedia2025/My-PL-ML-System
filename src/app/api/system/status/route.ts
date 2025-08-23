@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { RealFPLDataFetcher } from '@/lib/data/real-fpl-fetcher'
+import { withAuth } from '@/lib/middleware/api-auth'
 import fs from 'fs'
-import path from 'path'
 
-export async function GET() {
+async function statusHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
+    console.log(`System status check requested by API key: ${auth.apiKey.name}`)
+    
     // Check system components
     const systemChecks = {
       database: false,
@@ -23,20 +25,17 @@ export async function GET() {
       console.error('Database check failed:', error)
     }
 
-    // Check ML model - Check both file and training history
+    // Check ML model
     try {
       const fetcher = new RealFPLDataFetcher()
       const db = await fetcher.getDatabase()
       
-      // Check if we have any successful training runs
       const trainingHistory = await db.getTrainingHistory(1)
       const hasTrainingHistory = trainingHistory.length > 0
       
-      // Check for model file (optional)
       const modelPath = './data/models/model.json'
       const hasModelFile = fs.existsSync(modelPath)
       
-      // Model is considered available if we have training history OR model file
       systemChecks.ml_model = hasTrainingHistory || hasModelFile
       
       console.log(`Model check: trainingHistory=${hasTrainingHistory}, modelFile=${hasModelFile}`)
@@ -47,7 +46,7 @@ export async function GET() {
     // Check FPL API
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
       
       const response = await fetch('https://fantasy.premierleague.com/api/bootstrap-static/', {
         signal: controller.signal,
@@ -62,7 +61,7 @@ export async function GET() {
       console.error('FPL API check failed:', error)
     }
 
-    // Check data freshness (predictions from last 6 hours, not 24)
+    // Check data freshness
     try {
       const fetcher = new RealFPLDataFetcher()
       const db = await fetcher.getDatabase()
@@ -70,7 +69,7 @@ export async function GET() {
       
       if (recentPredictions.length > 0) {
         const lastPrediction = new Date(recentPredictions[0].created_at)
-        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000) // 6 hours instead of 24
+        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000)
         systemChecks.data_freshness = lastPrediction > sixHoursAgo
         
         console.log(`Data freshness: lastPrediction=${lastPrediction.toISOString()}, sixHoursAgo=${sixHoursAgo.toISOString()}`)
@@ -85,6 +84,7 @@ export async function GET() {
     const operationalCount = Object.values(systemChecks).filter(status => status).length
 
     return NextResponse.json({
+      success: true,
       status: allSystemsOperational ? 'Fully Operational' : 
               operationalCount >= 3 ? 'Mostly Operational' :
               operationalCount >= 2 ? 'Partially Operational' : 'Degraded',
@@ -93,9 +93,11 @@ export async function GET() {
       health_score: `${operationalCount}/4`,
       uptime: process.uptime(),
       system_type: 'Production ML System',
+      api_key: auth.apiKey.name,
       debug: {
         model_check: 'Checking both training history and model file',
-        data_freshness_window: '6 hours'
+        data_freshness_window: '6 hours',
+        authenticated_user: auth.apiKey.name
       }
     })
 
@@ -103,6 +105,7 @@ export async function GET() {
     console.error('System status check failed:', error)
     return NextResponse.json(
       { 
+        success: false,
         status: 'Critical Error', 
         error: 'System check failed',
         timestamp: new Date().toISOString()
@@ -111,3 +114,5 @@ export async function GET() {
     )
   }
 }
+
+export const GET = withAuth(statusHandler)
