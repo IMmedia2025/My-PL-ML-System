@@ -70,6 +70,15 @@ web_modules/
 .env.*
 !.env.example
 
+# Environment variables
+.env
+.env.local
+.env.production
+.env.test
+
+# But allow the example file
+!.env.example
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
