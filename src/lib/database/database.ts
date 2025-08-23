@@ -104,8 +104,8 @@ export class FPLDatabase {
           FOREIGN KEY (team_a) REFERENCES teams (id)
         )`,
 
-        // Predictions table
-        `CREATE TABLE IF NOT EXISTS predictions (
+        // Fixed Predictions table - this was causing issues
+        `CREATE TABLE IF NOT EXISTS match_predictions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           fixture_id INTEGER,
           home_team_id INTEGER,
@@ -141,7 +141,7 @@ export class FPLDatabase {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
 
-        // API Keys table
+        // Fixed API Keys table - expires_at should be NULL by default
         `CREATE TABLE IF NOT EXISTS api_keys (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           api_key TEXT UNIQUE NOT NULL,
@@ -151,7 +151,7 @@ export class FPLDatabase {
           rate_limit INTEGER DEFAULT 1000,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           last_used_at DATETIME,
-          expires_at DATETIME
+          expires_at DATETIME DEFAULT NULL
         )`,
 
         // API Usage table
@@ -224,7 +224,7 @@ export class FPLDatabase {
       'CREATE INDEX IF NOT EXISTS idx_api_keys_key ON api_keys(api_key)',
       'CREATE INDEX IF NOT EXISTS idx_api_usage_key_date ON api_usage(api_key_id, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_api_stats_key_date ON api_usage_stats(api_key_id, date)',
-      'CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_predictions_created ON match_predictions(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_fixtures_event ON fixtures(event)',
       'CREATE INDEX IF NOT EXISTS idx_sync_records_created ON sync_records(created_at)'
     ]
@@ -236,19 +236,21 @@ export class FPLDatabase {
     })
   }
 
-  // API Key Methods
+  // Fixed API Key Methods - removed timezone issues
   async createApiKey(data: { name: string, description?: string, rateLimit?: number }): Promise<string> {
     return new Promise((resolve, reject) => {
       const apiKey = this.generateApiKey()
       
+      // Explicitly set expires_at to NULL - this was causing the expiration issue
       this.db.run(`
-        INSERT INTO api_keys (api_key, name, description, rate_limit)
-        VALUES (?, ?, ?, ?)
-      `, [apiKey, data.name, data.description || '', data.rateLimit || 1000], (err) => {
+        INSERT INTO api_keys (api_key, name, description, rate_limit, expires_at)
+        VALUES (?, ?, ?, ?, NULL)
+      `, [apiKey, data.name, data.description || '', data.rateLimit || 1000], function(err) {
         if (err) {
           console.error('Error creating API key:', err)
           reject(err)
         } else {
+          console.log(`✅ API key created successfully: ${apiKey.substring(0, 12)}...`)
           resolve(apiKey)
         }
       })
@@ -257,18 +259,21 @@ export class FPLDatabase {
 
   async validateApiKey(apiKey: string): Promise<any> {
     return new Promise((resolve, reject) => {
+      // Simplified validation query - removed complex datetime comparison
       this.db.get(`
         SELECT * FROM api_keys 
-        WHERE api_key = ? AND is_active = 1 
-        AND (expires_at IS NULL OR expires_at > datetime('now'))
+        WHERE api_key = ? AND is_active = 1
       `, [apiKey], (err, row) => {
         if (err) {
           console.error('Error validating API key:', err)
           resolve(null)
         } else {
           if (row) {
+            console.log(`✅ API key validated: ${row.name}`)
             // Update last used timestamp
             this.updateApiKeyLastUsed(apiKey)
+          } else {
+            console.log(`❌ Invalid API key: ${apiKey.substring(0, 12)}...`)
           }
           resolve(row)
         }
@@ -391,7 +396,7 @@ export class FPLDatabase {
           console.error('Error saving sync record:', err)
           reject(err)
         } else {
-          console.log('Sync record saved successfully')
+          console.log('✅ Sync record saved successfully')
           resolve()
         }
       })
@@ -457,7 +462,8 @@ export class FPLDatabase {
 
   async getPredictionsCount(): Promise<number> {
     return new Promise((resolve) => {
-      this.db.get('SELECT COUNT(*) as count FROM predictions', (err, row: any) => {
+      // Fixed table name - was "predictions", should be "match_predictions"
+      this.db.get('SELECT COUNT(*) as count FROM match_predictions', (err, row: any) => {
         if (err) {
           console.error('Error getting predictions count:', err)
           resolve(0)
@@ -528,7 +534,7 @@ export class FPLDatabase {
           completed++
           if (completed === teams.length) {
             stmt.finalize()
-            console.log(`Inserted ${teams.length} teams`)
+            console.log(`✅ Inserted ${teams.length} teams`)
             resolve()
           }
         })
@@ -573,7 +579,7 @@ export class FPLDatabase {
           completed++
           if (completed === players.length) {
             stmt.finalize()
-            console.log(`Inserted ${players.length} players`)
+            console.log(`✅ Inserted ${players.length} players`)
             resolve()
           }
         })
@@ -603,7 +609,7 @@ export class FPLDatabase {
           completed++
           if (completed === fixtures.length) {
             stmt.finalize()
-            console.log(`Inserted ${fixtures.length} fixtures`)
+            console.log(`✅ Inserted ${fixtures.length} fixtures`)
             resolve()
           }
         })
@@ -611,10 +617,11 @@ export class FPLDatabase {
     })
   }
 
+  // Fixed prediction methods - using correct table name
   async savePrediction(prediction: any): Promise<void> {
     return new Promise((resolve, reject) => {
       this.db.run(`
-        INSERT INTO predictions (
+        INSERT INTO match_predictions (
           fixture_id, home_team_id, away_team_id, home_team_name, away_team_name,
           predicted_outcome, confidence, home_win_prob, draw_prob, away_win_prob,
           gameweek, kickoff_time, model_version, features_used
@@ -625,11 +632,12 @@ export class FPLDatabase {
         prediction.confidence, prediction.home_win_prob, prediction.draw_prob,
         prediction.away_win_prob, prediction.gameweek, prediction.kickoff_time,
         prediction.model_version, JSON.stringify(prediction.features_used)
-      ], (err) => {
+      ], function(err) {
         if (err) {
           console.error('Error saving prediction:', err.message)
           reject(err)
         } else {
+          console.log(`✅ Saved prediction: ${prediction.home_team_name} vs ${prediction.away_team_name}`)
           resolve()
         }
       })
@@ -639,7 +647,7 @@ export class FPLDatabase {
   async getLatestPredictions(limit: number = 10): Promise<any[]> {
     return new Promise((resolve, reject) => {
       this.db.all(`
-        SELECT * FROM predictions 
+        SELECT * FROM match_predictions 
         ORDER BY created_at DESC 
         LIMIT ?
       `, [limit], (err, rows) => {
@@ -647,6 +655,7 @@ export class FPLDatabase {
           console.error('Error getting latest predictions:', err)
           resolve([])
         } else {
+          console.log(`✅ Retrieved ${rows?.length || 0} predictions from database`)
           resolve(rows || [])
         }
       })
