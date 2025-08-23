@@ -9,6 +9,23 @@ async function syncHandler(request: NextRequest, context: any, auth: { apiKey: a
     const fetcher = new RealFPLDataFetcher()
     const result = await fetcher.fetchAllData()
     
+    // Save sync record to database for tracking
+    try {
+      const db = await fetcher.getDatabase()
+      await db.saveSyncRecord({
+        success: result.success,
+        teams_count: result.data.bootstrap?.teams?.length || 0,
+        players_count: result.data.bootstrap?.players?.length || 0,
+        fixtures_count: result.data.fixtures?.length || 0,
+        current_gameweek: result.data.currentGameweek || 'Unknown',
+        errors: result.errors,
+        api_key_name: auth.apiKey.name
+      })
+      console.log('✅ Sync record saved to database')
+    } catch (saveError) {
+      console.error('❌ Failed to save sync record:', saveError)
+    }
+    
     return NextResponse.json({
       success: result.success,
       message: result.success ? 'FPL data synchronized successfully' : 'Data sync completed with errors',
@@ -43,9 +60,14 @@ async function syncStatusHandler(request: NextRequest, context: any, auth: { api
     const fetcher = new RealFPLDataFetcher()
     const db = await fetcher.getDatabase()
     
-    // Get sync status from database
-    const recentPredictions = await db.getLatestPredictions(1)
-    const lastSync = recentPredictions.length > 0 ? recentPredictions[0].created_at : null
+    // Get actual sync history instead of predictions
+    const recentSyncs = await db.getLatestSyncRecords(1)
+    const lastSync = recentSyncs.length > 0 ? recentSyncs[0].created_at : null
+    
+    // Also check for any data in the database
+    const teams = await db.getTeamsCount()
+    const players = await db.getPlayersCount()
+    const fixtures = await db.getFixturesCount()
     
     return NextResponse.json({
       success: true,
@@ -53,7 +75,12 @@ async function syncStatusHandler(request: NextRequest, context: any, auth: { api
         lastSyncTime: lastSync,
         nextScheduledSync: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
         autoSyncEnabled: true,
-        systemReady: true
+        systemReady: true,
+        dataInDatabase: {
+          teams: teams,
+          players: players,
+          fixtures: fixtures
+        }
       },
       api_key: auth.apiKey.name,
       timestamp: new Date().toISOString()
