@@ -8,6 +8,25 @@ export class FPLDatabase {
 
   constructor(dbPath: string = './data/premier_league.db') {
     this.dbPath = dbPath
+
+// Add this method to the FPLDatabase class in src/lib/database/database.ts
+
+async getApiUsageSince(apiKeyId: number, since: string): Promise<number> {
+  return new Promise((resolve) => {
+    this.db.get(`
+      SELECT COUNT(*) as count 
+      FROM api_usage 
+      WHERE api_key_id = ? AND created_at > ?
+    `, [apiKeyId, since], (err, row: any) => {
+      if (err) {
+        console.error('Error getting API usage count:', err)
+        resolve(0)
+      } else {
+        resolve(row?.count || 0)
+      }
+    })
+  })
+}
     
     // Ensure directory exists
     const dir = path.dirname(dbPath)
