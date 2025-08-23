@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { RealFPLDataFetcher } from '@/lib/data/real-fpl-fetcher'
 import { ProductionMLModel } from '@/lib/ml/production-model'
+import { withAuth } from '@/lib/middleware/api-auth'
 
-// POST method - Train the model
-export async function POST() {
+async function trainHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
-    console.log('Starting production model training...')
+    console.log(`Model training requested by API key: ${auth.apiKey.name}`)
     
     // Initialize data and model
     const fetcher = new RealFPLDataFetcher()
@@ -30,6 +30,7 @@ export async function POST() {
         model_version: '1.0.0',
         estimated_accuracy: '80-83%'
       },
+      api_key: auth.apiKey.name,
       timestamp: new Date().toISOString()
     })
 
@@ -48,17 +49,16 @@ export async function POST() {
   }
 }
 
-// GET method - Check training status
-export async function GET() {
+async function trainingStatusHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
-    console.log('Checking training status...')
+    console.log('Training status check requested')
     
     // Initialize database
     const fetcher = new RealFPLDataFetcher()
     const db = await fetcher.getDatabase()
     
     // Check for training history
-    const trainingHistory = await db.getTrainingHistory(5) // Get last 5 training runs
+    const trainingHistory = await db.getTrainingHistory(5)
     const lastTraining = trainingHistory.length > 0 ? trainingHistory[0] : null
     
     // Check model availability
@@ -80,6 +80,7 @@ export async function GET() {
         samples: run.training_samples,
         version: run.model_version
       })),
+      api_key: auth.apiKey.name,
       timestamp: new Date().toISOString()
     })
 
@@ -96,3 +97,6 @@ export async function GET() {
     )
   }
 }
+
+export const POST = withAuth(trainHandler)
+export const GET = withAuth(trainingStatusHandler)
