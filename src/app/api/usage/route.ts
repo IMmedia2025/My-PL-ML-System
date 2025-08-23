@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { RealFPLDataFetcher } from '@/lib/data/real-fpl-fetcher'
-import { authenticateApiKey } from '@/lib/middleware/api-auth'
+import { withAuth } from '@/lib/middleware/api-auth'
 
-// GET /api/usage - Get API usage statistics for your API key
-export async function GET(request: NextRequest) {
+async function usageHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
-    const auth = await authenticateApiKey(request)
-    
-    if (!auth.authenticated) {
-      return NextResponse.json(
-        { success: false, error: auth.error },
-        { status: 401 }
-      )
-    }
-
     const { searchParams } = new URL(request.url)
     const days = parseInt(searchParams.get('days') || '30')
     const limit = Math.min(Math.max(days, 1), 90) // Between 1 and 90 days
@@ -36,7 +26,7 @@ export async function GET(request: NextRequest) {
     const rateLimit = {
       limit: auth.apiKey.rate_limit || 1000,
       window: '1 hour',
-      remaining: auth.apiKey.rate_limit || 1000 // In a real implementation, you'd calculate current usage
+      remaining: Math.max(0, (auth.apiKey.rate_limit || 1000) - totalRequests)
     }
 
     return NextResponse.json({
@@ -83,3 +73,5 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+export const GET = withAuth(usageHandler)
