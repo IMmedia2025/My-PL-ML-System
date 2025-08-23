@@ -181,6 +181,19 @@ export class FPLDatabase {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (api_key_id) REFERENCES api_keys (id),
           UNIQUE(api_key_id, date)
+        )`,
+
+        // Sync records table
+        `CREATE TABLE IF NOT EXISTS sync_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          success BOOLEAN NOT NULL,
+          teams_count INTEGER DEFAULT 0,
+          players_count INTEGER DEFAULT 0,
+          fixtures_count INTEGER DEFAULT 0,
+          current_gameweek TEXT,
+          errors TEXT,
+          api_key_name TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`
       ]
 
@@ -212,7 +225,8 @@ export class FPLDatabase {
       'CREATE INDEX IF NOT EXISTS idx_api_usage_key_date ON api_usage(api_key_id, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_api_stats_key_date ON api_usage_stats(api_key_id, date)',
       'CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at)',
-      'CREATE INDEX IF NOT EXISTS idx_fixtures_event ON fixtures(event)'
+      'CREATE INDEX IF NOT EXISTS idx_fixtures_event ON fixtures(event)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_records_created ON sync_records(created_at)'
     ]
 
     indexes.forEach(sql => {
@@ -343,6 +357,112 @@ export class FPLDatabase {
           resolve([])
         } else {
           resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  // Sync tracking methods
+  async saveSyncRecord(syncData: {
+    success: boolean,
+    teams_count: number,
+    players_count: number,
+    fixtures_count: number,
+    current_gameweek: string,
+    errors: string[],
+    api_key_name: string
+  }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.db.run(`
+        INSERT INTO sync_records (
+          success, teams_count, players_count, fixtures_count,
+          current_gameweek, errors, api_key_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [
+        syncData.success ? 1 : 0,
+        syncData.teams_count,
+        syncData.players_count,
+        syncData.fixtures_count,
+        syncData.current_gameweek,
+        JSON.stringify(syncData.errors),
+        syncData.api_key_name
+      ], (err) => {
+        if (err) {
+          console.error('Error saving sync record:', err)
+          reject(err)
+        } else {
+          console.log('Sync record saved successfully')
+          resolve()
+        }
+      })
+    })
+  }
+
+  async getLatestSyncRecords(limit: number = 10): Promise<any[]> {
+    return new Promise((resolve) => {
+      this.db.all(`
+        SELECT * FROM sync_records 
+        ORDER BY created_at DESC 
+        LIMIT ?
+      `, [limit], (err, rows) => {
+        if (err) {
+          console.error('Error getting sync records:', err)
+          resolve([])
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  // Data count methods
+  async getTeamsCount(): Promise<number> {
+    return new Promise((resolve) => {
+      this.db.get('SELECT COUNT(*) as count FROM teams', (err, row: any) => {
+        if (err) {
+          console.error('Error getting teams count:', err)
+          resolve(0)
+        } else {
+          resolve(row?.count || 0)
+        }
+      })
+    })
+  }
+
+  async getPlayersCount(): Promise<number> {
+    return new Promise((resolve) => {
+      this.db.get('SELECT COUNT(*) as count FROM players', (err, row: any) => {
+        if (err) {
+          console.error('Error getting players count:', err)
+          resolve(0)
+        } else {
+          resolve(row?.count || 0)
+        }
+      })
+    })
+  }
+
+  async getFixturesCount(): Promise<number> {
+    return new Promise((resolve) => {
+      this.db.get('SELECT COUNT(*) as count FROM fixtures', (err, row: any) => {
+        if (err) {
+          console.error('Error getting fixtures count:', err)
+          resolve(0)
+        } else {
+          resolve(row?.count || 0)
+        }
+      })
+    })
+  }
+
+  async getPredictionsCount(): Promise<number> {
+    return new Promise((resolve) => {
+      this.db.get('SELECT COUNT(*) as count FROM predictions', (err, row: any) => {
+        if (err) {
+          console.error('Error getting predictions count:', err)
+          resolve(0)
+        } else {
+          resolve(row?.count || 0)
         }
       })
     })
