@@ -139,6 +139,48 @@ export class FPLDatabase {
           training_duration INTEGER,
           features_used TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+
+        // API Keys table
+        `CREATE TABLE IF NOT EXISTS api_keys (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          api_key TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          is_active BOOLEAN DEFAULT 1,
+          rate_limit INTEGER DEFAULT 1000,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_used_at DATETIME,
+          expires_at DATETIME
+        )`,
+
+        // API Usage table
+        `CREATE TABLE IF NOT EXISTS api_usage (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          api_key_id INTEGER,
+          endpoint TEXT NOT NULL,
+          method TEXT NOT NULL,
+          status_code INTEGER,
+          response_time_ms INTEGER,
+          user_agent TEXT,
+          ip_address TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (api_key_id) REFERENCES api_keys (id)
+        )`,
+
+        // API Usage Daily Stats table
+        `CREATE TABLE IF NOT EXISTS api_usage_stats (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          api_key_id INTEGER,
+          date TEXT NOT NULL,
+          total_requests INTEGER DEFAULT 0,
+          successful_requests INTEGER DEFAULT 0,
+          failed_requests INTEGER DEFAULT 0,
+          avg_response_time_ms REAL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (api_key_id) REFERENCES api_keys (id),
+          UNIQUE(api_key_id, date)
         )`
       ]
 
@@ -153,6 +195,8 @@ export class FPLDatabase {
           } else {
             completed++
             if (completed === total) {
+              // Create indexes for better performance
+              this.createIndexes()
               console.log('Database initialized successfully')
               resolve()
             }
@@ -161,6 +205,168 @@ export class FPLDatabase {
       })
     })
   }
+
+  private createIndexes(): void {
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_api_keys_key ON api_keys(api_key)',
+      'CREATE INDEX IF NOT EXISTS idx_api_usage_key_date ON api_usage(api_key_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_api_stats_key_date ON api_usage_stats(api_key_id, date)',
+      'CREATE INDEX IF NOT EXISTS idx_predictions_created ON predictions(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_fixtures_event ON fixtures(event)'
+    ]
+
+    indexes.forEach(sql => {
+      this.db.run(sql, (err) => {
+        if (err) console.error('Index creation error:', err.message)
+      })
+    })
+  }
+
+  // API Key Methods
+  async createApiKey(data: { name: string, description?: string, rateLimit?: number }): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const apiKey = this.generateApiKey()
+      
+      this.db.run(`
+        INSERT INTO api_keys (api_key, name, description, rate_limit)
+        VALUES (?, ?, ?, ?)
+      `, [apiKey, data.name, data.description || '', data.rateLimit || 1000], (err) => {
+        if (err) {
+          console.error('Error creating API key:', err)
+          reject(err)
+        } else {
+          resolve(apiKey)
+        }
+      })
+    })
+  }
+
+  async validateApiKey(apiKey: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.db.get(`
+        SELECT * FROM api_keys 
+        WHERE api_key = ? AND is_active = 1 
+        AND (expires_at IS NULL OR expires_at > datetime('now'))
+      `, [apiKey], (err, row) => {
+        if (err) {
+          console.error('Error validating API key:', err)
+          resolve(null)
+        } else {
+          if (row) {
+            // Update last used timestamp
+            this.updateApiKeyLastUsed(apiKey)
+          }
+          resolve(row)
+        }
+      })
+    })
+  }
+
+  async logApiUsage(data: {
+    apiKeyId: number,
+    endpoint: string,
+    method: string,
+    statusCode: number,
+    responseTimeMs: number,
+    userAgent?: string,
+    ipAddress?: string
+  }): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.db.run(`
+        INSERT INTO api_usage (
+          api_key_id, endpoint, method, status_code, response_time_ms, 
+          user_agent, ip_address
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [
+        data.apiKeyId, data.endpoint, data.method, data.statusCode, 
+        data.responseTimeMs, data.userAgent || '', data.ipAddress || ''
+      ], (err) => {
+        if (err) console.error('Error logging API usage:', err)
+        resolve()
+      })
+    })
+
+    // Update daily stats
+    this.updateDailyStats(data.apiKeyId, data.statusCode, data.responseTimeMs)
+  }
+
+  async getApiKeyUsageStats(apiKeyId: number, days: number = 30): Promise<any[]> {
+    return new Promise((resolve) => {
+      this.db.all(`
+        SELECT date, total_requests, successful_requests, failed_requests, avg_response_time_ms
+        FROM api_usage_stats 
+        WHERE api_key_id = ? 
+        ORDER BY date DESC 
+        LIMIT ?
+      `, [apiKeyId, days], (err, rows) => {
+        if (err) {
+          console.error('Error getting usage stats:', err)
+          resolve([])
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  async getAllApiKeys(): Promise<any[]> {
+    return new Promise((resolve) => {
+      this.db.all(`
+        SELECT 
+          ak.*,
+          COUNT(au.id) as total_requests,
+          MAX(au.created_at) as last_request
+        FROM api_keys ak
+        LEFT JOIN api_usage au ON ak.id = au.api_key_id
+        GROUP BY ak.id
+        ORDER BY ak.created_at DESC
+      `, (err, rows) => {
+        if (err) {
+          console.error('Error getting API keys:', err)
+          resolve([])
+        } else {
+          resolve(rows || [])
+        }
+      })
+    })
+  }
+
+  private updateApiKeyLastUsed(apiKey: string): void {
+    this.db.run(`
+      UPDATE api_keys 
+      SET last_used_at = datetime('now') 
+      WHERE api_key = ?
+    `, [apiKey])
+  }
+
+  private updateDailyStats(apiKeyId: number, statusCode: number, responseTimeMs: number): void {
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    const isSuccess = statusCode >= 200 && statusCode < 400 ? 1 : 0
+    const isFailed = isSuccess ? 0 : 1
+
+    this.db.run(`
+      INSERT INTO api_usage_stats (
+        api_key_id, date, total_requests, successful_requests, failed_requests, avg_response_time_ms
+      ) VALUES (?, ?, 1, ?, ?, ?)
+      ON CONFLICT(api_key_id, date) DO UPDATE SET
+        total_requests = total_requests + 1,
+        successful_requests = successful_requests + ?,
+        failed_requests = failed_requests + ?,
+        avg_response_time_ms = (avg_response_time_ms * (total_requests - 1) + ?) / total_requests,
+        updated_at = datetime('now')
+    `, [apiKeyId, today, isSuccess, isFailed, responseTimeMs, isSuccess, isFailed, responseTimeMs])
+  }
+
+  private generateApiKey(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    let result = 'fpl_'
+    for (let i = 0; i < 32; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return result
+  }
+
+  // ... All existing methods remain the same ...
 
   async insertTeams(teams: any[]): Promise<void> {
     return new Promise((resolve, reject) => {
