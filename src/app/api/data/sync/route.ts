@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { RealFPLDataFetcher } from '@/lib/data/real-fpl-fetcher'
+import { withAuth } from '@/lib/middleware/api-auth'
 
-export async function POST() {
+async function syncHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
-    console.log('Starting real FPL data synchronization...')
+    console.log(`Data sync requested by API key: ${auth.apiKey.name}`)
     
     const fetcher = new RealFPLDataFetcher()
     const result = await fetcher.fetchAllData()
@@ -18,6 +19,7 @@ export async function POST() {
         currentGameweek: result.data.currentGameweek || 'Unknown'
       },
       errors: result.errors,
+      api_key: auth.apiKey.name,
       timestamp: new Date().toISOString()
     })
 
@@ -36,7 +38,7 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+async function syncStatusHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
     const fetcher = new RealFPLDataFetcher()
     const db = await fetcher.getDatabase()
@@ -49,10 +51,11 @@ export async function GET() {
       success: true,
       syncStatus: {
         lastSyncTime: lastSync,
-        nextScheduledSync: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), // 6 hours
+        nextScheduledSync: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
         autoSyncEnabled: true,
         systemReady: true
       },
+      api_key: auth.apiKey.name,
       timestamp: new Date().toISOString()
     })
 
@@ -68,3 +71,6 @@ export async function GET() {
     )
   }
 }
+
+export const POST = withAuth(syncHandler)
+export const GET = withAuth(syncStatusHandler)
