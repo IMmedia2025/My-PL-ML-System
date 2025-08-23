@@ -1,23 +1,23 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { RealFPLDataFetcher } from '@/lib/data/real-fpl-fetcher'
 import { ProductionMLModel } from '@/lib/ml/production-model'
+import { withAuth } from '@/lib/middleware/api-auth'
 
-export async function POST() {
+async function generateHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
-    console.log('Generating real predictions from FPL data...')
+    console.log(`Prediction generation requested by API key: ${auth.apiKey.name}`)
     
     // Initialize data and model
     const fetcher = new RealFPLDataFetcher()
     const db = await fetcher.getDatabase()
     const model = new ProductionMLModel(db)
     
-    // Get all upcoming fixtures - check current gameweek and future
+    // Get all upcoming fixtures
     const allFixtures = await db.getAllFixtures()
     console.log(`Total fixtures in database: ${allFixtures.length}`)
     
     // Filter for current gameweek and upcoming fixtures
     const upcomingFixtures = allFixtures.filter(fixture => {
-      // Include fixtures that haven't been finished yet
       return !fixture.finished && fixture.team_h && fixture.team_a
     })
     
@@ -34,7 +34,8 @@ export async function POST() {
           total_predictions: 0,
           total_fixtures_in_db: allFixtures.length,
           upcoming_fixtures_found: 0,
-          generated_at: new Date().toISOString()
+          generated_at: new Date().toISOString(),
+          api_key: auth.apiKey.name
         }
       })
     }
@@ -64,7 +65,8 @@ export async function POST() {
         model_version: '1.0.0',
         total_predictions: predictions.length,
         total_fixtures_in_db: allFixtures.length,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
+        api_key: auth.apiKey.name
       }
     })
 
@@ -83,10 +85,9 @@ export async function POST() {
   }
 }
 
-// GET method - Check prediction status and recent predictions
-export async function GET() {
+async function generateStatusHandler(request: NextRequest, context: any, auth: { apiKey: any }) {
   try {
-    console.log('Getting prediction status...')
+    console.log('Prediction status check requested')
     
     const fetcher = new RealFPLDataFetcher()
     const db = await fetcher.getDatabase()
@@ -110,6 +111,7 @@ export async function GET() {
         confidence: Math.round(p.confidence * 100),
         gameweek: p.gameweek
       })),
+      api_key: auth.apiKey.name,
       timestamp: new Date().toISOString()
     })
 
@@ -126,3 +128,6 @@ export async function GET() {
     )
   }
 }
+
+export const POST = withAuth(generateHandler)
+export const GET = withAuth(generateStatusHandler)
