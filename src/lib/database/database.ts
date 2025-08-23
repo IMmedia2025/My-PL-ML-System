@@ -201,7 +201,7 @@ export class FPLDatabase {
       const total = tables.length
 
       tables.forEach((sql) => {
-        this.db.run(sql, (err) => {
+        this.db.run(sql, (err: any) => {
           if (err) {
             console.error('Error creating table:', err.message)
             reject(err)
@@ -230,7 +230,7 @@ export class FPLDatabase {
     ]
 
     indexes.forEach(sql => {
-      this.db.run(sql, (err) => {
+      this.db.run(sql, (err: any) => {
         if (err) console.error('Index creation error:', err.message)
       })
     })
@@ -245,7 +245,7 @@ export class FPLDatabase {
       this.db.run(`
         INSERT INTO api_keys (api_key, name, description, rate_limit, expires_at)
         VALUES (?, ?, ?, ?, NULL)
-      `, [apiKey, data.name, data.description || '', data.rateLimit || 1000], function(err) {
+      `, [apiKey, data.name, data.description || '', data.rateLimit || 1000], function(err: any) {
         if (err) {
           console.error('Error creating API key:', err)
           reject(err)
@@ -263,13 +263,13 @@ export class FPLDatabase {
       this.db.get(`
         SELECT * FROM api_keys 
         WHERE api_key = ? AND is_active = 1
-      `, [apiKey], (err, row) => {
+      `, [apiKey], (err, row: any) => {
         if (err) {
           console.error('Error validating API key:', err)
           resolve(null)
         } else {
           if (row) {
-            console.log(`✅ API key validated: ${row.name}`)
+            console.log(`✅ API key validated: ${row.name || 'Unknown'}`)
             // Update last used timestamp
             this.updateApiKeyLastUsed(apiKey)
           } else {
@@ -299,7 +299,7 @@ export class FPLDatabase {
       `, [
         data.apiKeyId, data.endpoint, data.method, data.statusCode, 
         data.responseTimeMs, data.userAgent || '', data.ipAddress || ''
-      ], (err) => {
+      ], (err: any) => {
         if (err) console.error('Error logging API usage:', err)
         resolve()
       })
@@ -315,7 +315,7 @@ export class FPLDatabase {
         SELECT COUNT(*) as count 
         FROM api_usage 
         WHERE api_key_id = ? AND created_at > ?
-      `, [apiKeyId, since], (err, row: any) => {
+      `, [apiKeyId, since], (err: any, row: any) => {
         if (err) {
           console.error('Error getting API usage count:', err)
           resolve(0)
@@ -334,7 +334,7 @@ export class FPLDatabase {
         WHERE api_key_id = ? 
         ORDER BY date DESC 
         LIMIT ?
-      `, [apiKeyId, days], (err, rows) => {
+      `, [apiKeyId, days], (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting usage stats:', err)
           resolve([])
@@ -356,7 +356,7 @@ export class FPLDatabase {
         LEFT JOIN api_usage au ON ak.id = au.api_key_id
         GROUP BY ak.id
         ORDER BY ak.created_at DESC
-      `, (err, rows) => {
+      `, (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting API keys:', err)
           resolve([])
@@ -391,7 +391,7 @@ export class FPLDatabase {
         syncData.current_gameweek,
         JSON.stringify(syncData.errors),
         syncData.api_key_name
-      ], (err) => {
+      ], (err: any) => {
         if (err) {
           console.error('Error saving sync record:', err)
           reject(err)
@@ -409,7 +409,7 @@ export class FPLDatabase {
         SELECT * FROM sync_records 
         ORDER BY created_at DESC 
         LIMIT ?
-      `, [limit], (err, rows) => {
+      `, [limit], (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting sync records:', err)
           resolve([])
@@ -423,7 +423,7 @@ export class FPLDatabase {
   // Data count methods
   async getTeamsCount(): Promise<number> {
     return new Promise((resolve) => {
-      this.db.get('SELECT COUNT(*) as count FROM teams', (err, row: any) => {
+      this.db.get('SELECT COUNT(*) as count FROM teams', (err: any, row: any) => {
         if (err) {
           console.error('Error getting teams count:', err)
           resolve(0)
@@ -436,7 +436,7 @@ export class FPLDatabase {
 
   async getPlayersCount(): Promise<number> {
     return new Promise((resolve) => {
-      this.db.get('SELECT COUNT(*) as count FROM players', (err, row: any) => {
+      this.db.get('SELECT COUNT(*) as count FROM players', (err: any, row: any) => {
         if (err) {
           console.error('Error getting players count:', err)
           resolve(0)
@@ -449,7 +449,7 @@ export class FPLDatabase {
 
   async getFixturesCount(): Promise<number> {
     return new Promise((resolve) => {
-      this.db.get('SELECT COUNT(*) as count FROM fixtures', (err, row: any) => {
+      this.db.get('SELECT COUNT(*) as count FROM fixtures', (err: any, row: any) => {
         if (err) {
           console.error('Error getting fixtures count:', err)
           resolve(0)
@@ -463,7 +463,7 @@ export class FPLDatabase {
   async getPredictionsCount(): Promise<number> {
     return new Promise((resolve) => {
       // Fixed table name - was "predictions", should be "match_predictions"
-      this.db.get('SELECT COUNT(*) as count FROM match_predictions', (err, row: any) => {
+      this.db.get('SELECT COUNT(*) as count FROM match_predictions', (err: any, row: any) => {
         if (err) {
           console.error('Error getting predictions count:', err)
           resolve(0)
@@ -479,7 +479,9 @@ export class FPLDatabase {
       UPDATE api_keys 
       SET last_used_at = datetime('now') 
       WHERE api_key = ?
-    `, [apiKey])
+    `, [apiKey], (err: any) => {
+      if (err) console.error('Error updating last used timestamp:', err)
+    })
   }
 
   private updateDailyStats(apiKeyId: number, statusCode: number, responseTimeMs: number): void {
@@ -497,7 +499,9 @@ export class FPLDatabase {
         failed_requests = failed_requests + ?,
         avg_response_time_ms = (avg_response_time_ms * (total_requests - 1) + ?) / total_requests,
         updated_at = datetime('now')
-    `, [apiKeyId, today, isSuccess, isFailed, responseTimeMs, isSuccess, isFailed, responseTimeMs])
+    `, [apiKeyId, today, isSuccess, isFailed, responseTimeMs, isSuccess, isFailed, responseTimeMs], (err: any) => {
+      if (err) console.error('Error updating daily stats:', err)
+    })
   }
 
   private generateApiKey(): string {
@@ -527,7 +531,7 @@ export class FPLDatabase {
           team.strength_overall_home, team.strength_overall_away,
           team.strength_attack_home, team.strength_attack_away,
           team.strength_defence_home, team.strength_defence_away
-        ], (err) => {
+        ], (err: any) => {
           if (err) {
             console.error('Error inserting team:', err.message)
           }
@@ -572,7 +576,7 @@ export class FPLDatabase {
           player.creativity || 0, player.threat || 0, player.ict_index || 0,
           player.starts || 0, player.expected_goals || 0, player.expected_assists || 0,
           player.expected_goal_involvements || 0, player.expected_goals_conceded || 0
-        ], (err) => {
+        ], (err: any) => {
           if (err) {
             console.error('Error inserting player:', err.message)
           }
@@ -602,7 +606,7 @@ export class FPLDatabase {
           fixture.id, fixture.event, fixture.team_h, fixture.team_a,
           fixture.team_h_score, fixture.team_a_score, fixture.finished,
           fixture.kickoff_time, fixture.team_h_difficulty, fixture.team_a_difficulty
-        ], (err) => {
+        ], (err: any) => {
           if (err) {
             console.error('Error inserting fixture:', err.message)
           }
@@ -632,7 +636,7 @@ export class FPLDatabase {
         prediction.confidence, prediction.home_win_prob, prediction.draw_prob,
         prediction.away_win_prob, prediction.gameweek, prediction.kickoff_time,
         prediction.model_version, JSON.stringify(prediction.features_used)
-      ], function(err) {
+      ], function(err: any) {
         if (err) {
           console.error('Error saving prediction:', err.message)
           reject(err)
@@ -650,7 +654,7 @@ export class FPLDatabase {
         SELECT * FROM match_predictions 
         ORDER BY created_at DESC 
         LIMIT ?
-      `, [limit], (err, rows) => {
+      `, [limit], (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting latest predictions:', err)
           resolve([])
@@ -668,7 +672,7 @@ export class FPLDatabase {
         SELECT * FROM training_history 
         ORDER BY created_at DESC 
         LIMIT ?
-      `, [limit], (err, rows) => {
+      `, [limit], (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting training history:', err)
           resolve([]) // Return empty array on error
@@ -684,7 +688,7 @@ export class FPLDatabase {
       this.db.get(`
         SELECT COUNT(*) as count FROM training_history 
         WHERE accuracy > 0
-      `, (err, row: any) => {
+      `, (err: any, row: any) => {
         if (err) {
           console.error('Error checking model existence:', err)
           resolve(false)
@@ -706,7 +710,7 @@ export class FPLDatabase {
         LEFT JOIN teams h ON f.team_h = h.id
         LEFT JOIN teams a ON f.team_a = a.id
         ORDER BY f.event ASC, f.kickoff_time ASC
-      `, (err, rows) => {
+      `, (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting all fixtures:', err)
           resolve([]) // Return empty array on error
@@ -733,7 +737,7 @@ export class FPLDatabase {
           AND f.team_a IS NOT NULL
         ORDER BY f.event ASC, f.kickoff_time ASC
         LIMIT ?
-      `, [limit], (err, rows) => {
+      `, [limit], (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting upcoming fixtures:', err)
           resolve([]) // Return empty array on error
@@ -752,7 +756,7 @@ export class FPLDatabase {
           AND team_h_score IS NOT NULL 
           AND team_a_score IS NOT NULL
         ORDER BY event ASC
-      `, (err, rows) => {
+      `, (err: any, rows: any[]) => {
         if (err) {
           console.error('Error getting finished matches:', err)
           resolve([]) // Return empty array on error
@@ -765,7 +769,7 @@ export class FPLDatabase {
 
   async close(): Promise<void> {
     return new Promise((resolve) => {
-      this.db.close((err) => {
+      this.db.close((err: any) => {
         if (err) {
           console.error('Error closing database:', err.message)
         } else {
